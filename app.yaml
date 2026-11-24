@@ -1,0 +1,10 @@
+# Databricks App runtime config for the SQL agent (app/app.py).
+# The app is deployed from the bundle root so it can import the shared agent/ package.
+command: ["streamlit", "run", "app/app.py", "--server.headless", "true"]
+env:
+  - name: SERVING_ENDPOINT
+    valueFrom: serving-endpoint
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  - name: AGENT_CATALOG
+    value: workspace
