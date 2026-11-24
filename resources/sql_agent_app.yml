@@ -3,17 +3,9 @@ resources:
     sql_agent:
       name: health-sql-agent
       description: Chat with the Synthea Gold layer. A Databricks-hosted model writes read-only SQL, the app runs it and explains the result.
-      # The app needs the shared agent/ package, so it is deployed from the bundle root.
+      # Deployed from the bundle root so the app can import the shared agent/ package.
       source_code_path: ..
-      config:
-        command: ["streamlit", "run", "app/app.py", "--server.headless", "true"]
-        env:
-          - name: SERVING_ENDPOINT
-            value_from: serving-endpoint
-          - name: DATABRICKS_WAREHOUSE_ID
-            value_from: sql-warehouse
-          - name: AGENT_CATALOG
-            value: ${var.catalog}
+      # Start command and environment variables are in app.yaml at the repo root.
       # Least privilege: the app's service principal can query the model, use the
       # warehouse and SELECT from the Gold tables only (no Bronze/Silver, no writes).
       resources:
