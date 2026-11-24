@@ -11,6 +11,7 @@ Flow for one question:
 The same class is used by the notebook, the evaluation and the chat app; only
 the `llm` and `run_sql` callables differ.
 """
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ import pandas as pd
 
 from .guardrails import GuardrailError, check_sql
 from .prompts import ANSWER_TEMPLATE, FEW_SHOT, FIX_TEMPLATE, SYSTEM_TEMPLATE
+
+log = logging.getLogger("sql_agent")
 
 LLM = Callable[[List[dict]], str]          # messages -> text
 RunSQL = Callable[[str], pd.DataFrame]      # sql -> result
@@ -43,9 +46,10 @@ def _message_text(content) -> str:
     return "".join(parts)
 
 
-def databricks_llm(endpoint: str, temperature: float = 0.0, max_tokens: int = 2000) -> LLM:
+def databricks_llm(endpoint: str, temperature: float = 0.0, max_tokens: int = 4000) -> LLM:
     """Chat function backed by a Databricks Model Serving endpoint.
-    Authentication comes from the notebook / app context automatically."""
+    Authentication comes from the notebook / app context automatically.
+    Reasoning models spend part of max_tokens on hidden thinking, so the budget is generous."""
     from databricks.sdk import WorkspaceClient
 
     client = WorkspaceClient().serving_endpoints.get_open_ai_client()
@@ -53,7 +57,12 @@ def databricks_llm(endpoint: str, temperature: float = 0.0, max_tokens: int = 20
     def call(messages: List[dict]) -> str:
         resp = client.chat.completions.create(
             model=endpoint, messages=messages, temperature=temperature, max_tokens=max_tokens)
-        return _message_text(resp.choices[0].message.content)
+        choice = resp.choices[0]
+        text = _message_text(choice.message.content)
+        if not text.strip():
+            log.warning("Empty reply from %s (finish_reason=%s, usage=%s)",
+                        endpoint, choice.finish_reason, getattr(resp, "usage", None))
+        return text
 
     return call
 
@@ -184,7 +193,21 @@ class SQLAgent:
         shown = data.head(max_rows)
         prompt = ANSWER_TEMPLATE.format(question=question, sql=sql, n_rows=len(data),
                                         shown=len(shown), table=shown.to_string(index=False))
-        return _THINK.sub("", self.answer_llm([{"role": "user", "content": prompt}])).strip()
+        try:
+            text = _THINK.sub("", self.answer_llm([{"role": "user", "content": prompt}])).strip()
+        except Exception as e:  # the numbers are already on screen; never fail the answer
+            log.warning("Answer generation failed: %s", e)
+            text = ""
+        return text or fallback_answer(data)
+
+
+def fallback_answer(data: pd.DataFrame) -> str:
+    """Plain summary used when the model returns no text."""
+    if data is None or data.empty:
+        return "The query ran but returned no rows."
+    if data.shape == (1, 1):
+        return f"Result: **{data.iloc[0, 0]}** ({data.columns[0].replace('_', ' ')})."
+    return f"Here are the results ({len(data)} rows)."
 
 
 def spark_runner(spark) -> RunSQL:

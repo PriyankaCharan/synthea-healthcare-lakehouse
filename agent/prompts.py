@@ -90,7 +90,8 @@ Error:
 
 Write a corrected query. Same output rules: one query in a ```sql block."""
 
-ANSWER_TEMPLATE = """Question: {question}
+ANSWER_TEMPLATE = """/no_think
+Question: {question}
 
 SQL that was run:
 ```sql
