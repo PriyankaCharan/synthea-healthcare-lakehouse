@@ -1,0 +1,1703 @@
+{
+  "datasets": [
+    {
+      "name": "kpis",
+      "displayName": "kpis",
+      "query": "SELECT *, ROUND(total_cost / 1e9, 2) AS total_cost_bn FROM workspace.gold.kpi_overview"
+    },
+    {
+      "name": "utilization",
+      "displayName": "utilization",
+      "query": "SELECT * FROM workspace.gold.agg_monthly_utilization\nWHERE month_start >= add_months((SELECT snapshot_date FROM workspace.gold.kpi_overview), -120)\n  AND month_start < DATE_TRUNC('MONTH', (SELECT snapshot_date FROM workspace.gold.kpi_overview))"
+    },
+    {
+      "name": "readmissions",
+      "displayName": "readmissions",
+      "query": "SELECT * FROM workspace.gold.agg_readmission_monthly\nWHERE discharge_month >= add_months((SELECT snapshot_date FROM workspace.gold.kpi_overview), -120)\n  AND discharge_month < DATE_TRUNC('MONTH', (SELECT snapshot_date FROM workspace.gold.kpi_overview))"
+    },
+    {
+      "name": "demographics",
+      "displayName": "demographics",
+      "query": "SELECT gender, age_band, COUNT(*) AS patients\nFROM workspace.gold.dim_patient WHERE NOT is_deceased GROUP BY ALL"
+    },
+    {
+      "name": "prevalence_overall",
+      "displayName": "prevalence overall",
+      "query": "SELECT condition_group,\n  SUM(patients_with_condition) AS patients_with_condition,\n  ROUND(SUM(patients_with_condition) / (SELECT living_patients FROM workspace.gold.kpi_overview), 4) AS prevalence_rate\nFROM workspace.gold.agg_chronic_prevalence GROUP BY condition_group"
+    },
+    {
+      "name": "prevalence_age",
+      "displayName": "prevalence age",
+      "query": "WITH pop AS (\n  SELECT age_band, COUNT(*) AS living FROM workspace.gold.dim_patient WHERE NOT is_deceased GROUP BY age_band)\nSELECT c.condition_group, c.age_band, ROUND(SUM(c.patients_with_condition) / MAX(pop.living), 4) AS prevalence_rate\nFROM workspace.gold.agg_chronic_prevalence c JOIN pop USING (age_band)\nWHERE c.condition_group IN ('Hypertension', 'Diabetes', 'Prediabetes', 'Obesity', 'Coronary heart disease', 'COPD')\nGROUP BY ALL"
+    },
+    {
+      "name": "organizations",
+      "displayName": "organizations",
+      "query": "SELECT organization_name, city, inpatient_admissions, avg_length_of_stay_days,\n  readmission_rate_30d, encounters, total_cost\nFROM workspace.gold.agg_organization_performance\nWHERE inpatient_admissions >= 50\nORDER BY readmission_rate_30d DESC"
+    },
+    {
+      "name": "payer_split",
+      "displayName": "payer split",
+      "query": "SELECT payer_type, 'Paid by insurer' AS component, SUM(payer_paid) AS amount\nFROM workspace.gold.agg_payer_performance WHERE year = (SELECT YEAR(snapshot_date) FROM workspace.gold.kpi_overview) - 1 GROUP BY ALL\nUNION ALL\nSELECT payer_type, 'Paid by patient', SUM(patient_out_of_pocket)\nFROM workspace.gold.agg_payer_performance WHERE year = (SELECT YEAR(snapshot_date) FROM workspace.gold.kpi_overview) - 1 GROUP BY ALL"
+    },
+    {
+      "name": "payer_coverage",
+      "displayName": "payer coverage",
+      "query": "SELECT payer_name, payer_type, coverage_rate, patients_served\nFROM workspace.gold.agg_payer_performance WHERE year = (SELECT YEAR(snapshot_date) FROM workspace.gold.kpi_overview) - 1"
+    },
+    {
+      "name": "oop_trend",
+      "displayName": "oop trend",
+      "query": "SELECT MAKE_DATE(year, 1, 1) AS year_start, payer_type, SUM(patient_out_of_pocket) AS patient_out_of_pocket\nFROM workspace.gold.agg_payer_performance WHERE year BETWEEN (SELECT YEAR(snapshot_date) FROM workspace.gold.kpi_overview) - 10 AND (SELECT YEAR(snapshot_date) FROM workspace.gold.kpi_overview) - 1 GROUP BY ALL"
+    },
+    {
+      "name": "top_meds",
+      "displayName": "top meds",
+      "query": "SELECT medication_description, SUM(total_cost) AS total_cost, SUM(patients) AS patients\nFROM workspace.gold.agg_top_medications WHERE year BETWEEN (SELECT YEAR(snapshot_date) FROM workspace.gold.kpi_overview) - 10 AND (SELECT YEAR(snapshot_date) FROM workspace.gold.kpi_overview) - 1\nGROUP BY medication_description ORDER BY total_cost DESC LIMIT 10"
+    },
+    {
+      "name": "dq",
+      "displayName": "dq",
+      "query": "SELECT table_name, check_name, severity, failed_rows, total_rows, status\nFROM workspace.silver.dq_results\nWHERE run_ts = (SELECT MAX(run_ts) FROM workspace.silver.dq_results)"
+    }
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "w001",
+            "textbox_spec": "# Population Health and Cost\nSynthetic Massachusetts population (Synthea, seed 42). Trends show the last 10 years up to the data snapshot date."
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w002",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "sum(living_patients)",
+                      "expression": "SUM(`living_patients`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(living_patients)",
+                  "displayName": "Living patients",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Living patients"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w003",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "sum(encounters_last_12m)",
+                      "expression": "SUM(`encounters_last_12m`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(encounters_last_12m)",
+                  "displayName": "Encounters, last 12 months",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Encounters, last 12 months"
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w004",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "sum(total_cost_bn)",
+                      "expression": "SUM(`total_cost_bn`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_cost_bn)",
+                  "displayName": "Total cost, USD billions (all years)",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 2
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total cost, USD billions (all years)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w005",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "sum(payer_coverage_rate)",
+                      "expression": "SUM(`payer_coverage_rate`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(payer_coverage_rate)",
+                  "displayName": "Paid by insurers",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Paid by insurers"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w006",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "sum(readmission_rate_30d)",
+                      "expression": "SUM(`readmission_rate_30d`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(readmission_rate_30d)",
+                  "displayName": "30-day readmission rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "30-day readmission rate"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w007",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "kpis",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "sum(avg_length_of_stay_days)",
+                      "expression": "SUM(`avg_length_of_stay_days`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(avg_length_of_stay_days)",
+                  "displayName": "Avg inpatient stay (days)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg inpatient stay (days)"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w008",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "utilization",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "monthly(month_start)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `month_start`)"
+                    },
+                    {
+                      "name": "sum(encounters)",
+                      "expression": "SUM(`encounters`)"
+                    },
+                    {
+                      "name": "encounter_class",
+                      "expression": "`encounter_class`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "area",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(month_start)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month",
+                  "axis": {
+                    "title": "Month"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(encounters)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Encounters",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Encounters"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "encounter_class",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "encounter class"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Encounters per month by type"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w009",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "utilization",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "monthly(month_start)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `month_start`)"
+                    },
+                    {
+                      "name": "sum(total_cost)",
+                      "expression": "SUM(`total_cost`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(month_start)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month",
+                  "axis": {
+                    "title": "Month"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_cost)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Total cost",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "axis": {
+                    "title": "Total cost"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Monthly cost of care"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w010",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "demographics",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "age_band",
+                      "expression": "`age_band`"
+                    },
+                    {
+                      "name": "sum(patients)",
+                      "expression": "SUM(`patients`)"
+                    },
+                    {
+                      "name": "gender",
+                      "expression": "`gender`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "age_band",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Age band",
+                  "axis": {
+                    "title": "Age band"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(patients)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Patients",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Patients"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "gender",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "gender"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Living patients by age band and gender"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 10,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ]
+    },
+    {
+      "name": "clinical",
+      "displayName": "Clinical quality",
+      "layout": [
+        {
+          "widget": {
+            "name": "w011",
+            "textbox_spec": "# Clinical quality\nReadmissions count only inpatient stays whose 30-day follow-up window is complete."
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w012",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "readmissions",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "monthly(discharge_month)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `discharge_month`)"
+                    },
+                    {
+                      "name": "avg(readmission_rate_30d)",
+                      "expression": "AVG(`readmission_rate_30d`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(discharge_month)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Discharge month",
+                  "axis": {
+                    "title": "Discharge month"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(readmission_rate_30d)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Readmission rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Readmission rate"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "30-day readmission rate by discharge month"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w013",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "readmissions",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "monthly(discharge_month)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `discharge_month`)"
+                    },
+                    {
+                      "name": "avg(avg_length_of_stay_days)",
+                      "expression": "AVG(`avg_length_of_stay_days`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(discharge_month)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Discharge month",
+                  "axis": {
+                    "title": "Discharge month"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(avg_length_of_stay_days)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Days",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Days"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Average inpatient length of stay"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w014",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "prevalence_overall",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "condition_group",
+                      "expression": "`condition_group`"
+                    },
+                    {
+                      "name": "sum(prevalence_rate)",
+                      "expression": "SUM(`prevalence_rate`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(prevalence_rate)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Share of living patients",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Share of living patients"
+                  }
+                },
+                "y": {
+                  "fieldName": "condition_group",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Condition",
+                  "axis": {
+                    "title": "Condition"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Chronic disease prevalence (living patients)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "w015",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "prevalence_age",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "age_band",
+                      "expression": "`age_band`"
+                    },
+                    {
+                      "name": "sum(prevalence_rate)",
+                      "expression": "SUM(`prevalence_rate`)"
+                    },
+                    {
+                      "name": "condition_group",
+                      "expression": "`condition_group`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "age_band",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Age band",
+                  "axis": {
+                    "title": "Age band"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(prevalence_rate)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Share of living patients",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Share of living patients"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "condition_group",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "condition group"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Prevalence by age band, six most common conditions"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 8,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "w016",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "organizations",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "organization_name",
+                      "expression": "`organization_name`"
+                    },
+                    {
+                      "name": "city",
+                      "expression": "`city`"
+                    },
+                    {
+                      "name": "inpatient_admissions",
+                      "expression": "`inpatient_admissions`"
+                    },
+                    {
+                      "name": "avg_length_of_stay_days",
+                      "expression": "`avg_length_of_stay_days`"
+                    },
+                    {
+                      "name": "readmission_rate_30d",
+                      "expression": "`readmission_rate_30d`"
+                    },
+                    {
+                      "name": "encounters",
+                      "expression": "`encounters`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "organization_name",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "organization name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "city",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "city",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "inpatient_admissions",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "inpatient admissions",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0"
+                  },
+                  {
+                    "fieldName": "avg_length_of_stay_days",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "avg length of stay days",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0.0"
+                  },
+                  {
+                    "fieldName": "readmission_rate_30d",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "title": "readmission rate 30d",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0.0%"
+                  },
+                  {
+                    "fieldName": "encounters",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100005,
+                    "title": "encounters",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "Organizations by 30-day readmission rate (50+ inpatient admissions)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 6,
+            "height": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "cost",
+      "displayName": "Cost and payers",
+      "layout": [
+        {
+          "widget": {
+            "name": "w017",
+            "textbox_spec": "# Cost and payers\nPayer charts use the last full year before the snapshot date."
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w018",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "payer_split",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "payer_type",
+                      "expression": "`payer_type`"
+                    },
+                    {
+                      "name": "sum(amount)",
+                      "expression": "SUM(`amount`)"
+                    },
+                    {
+                      "name": "component",
+                      "expression": "`component`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "payer_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Payer type",
+                  "axis": {
+                    "title": "Payer type"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(amount)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Amount",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "axis": {
+                    "title": "Amount"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "component",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "component"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Who pays: insurer vs patient, by payer type"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w019",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "payer_coverage",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "payer_name",
+                      "expression": "`payer_name`"
+                    },
+                    {
+                      "name": "avg(coverage_rate)",
+                      "expression": "AVG(`coverage_rate`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "avg(coverage_rate)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Coverage rate",
+                  "format": {
+                    "type": "number-percent",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "axis": {
+                    "title": "Coverage rate"
+                  }
+                },
+                "y": {
+                  "fieldName": "payer_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Payer",
+                  "axis": {
+                    "title": "Payer"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Share of cost covered, by payer"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w020",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "oop_trend",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "monthly(year_start)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `year_start`)"
+                    },
+                    {
+                      "name": "sum(patient_out_of_pocket)",
+                      "expression": "SUM(`patient_out_of_pocket`)"
+                    },
+                    {
+                      "name": "payer_type",
+                      "expression": "`payer_type`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(year_start)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Year",
+                  "axis": {
+                    "title": "Year"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(patient_out_of_pocket)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Out of pocket",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "axis": {
+                    "title": "Out of pocket"
+                  }
+                },
+                "label": {
+                  "show": false
+                },
+                "color": {
+                  "fieldName": "payer_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "payer type"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Patient out-of-pocket spend per year"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w021",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "top_meds",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "medication_description",
+                      "expression": "`medication_description`"
+                    },
+                    {
+                      "name": "sum(total_cost)",
+                      "expression": "SUM(`total_cost`)"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "sum(total_cost)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Total cost",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "USD",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "axis": {
+                    "title": "Total cost"
+                  }
+                },
+                "y": {
+                  "fieldName": "medication_description",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Medication",
+                  "axis": {
+                    "title": "Medication"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Top 10 medications by cost (last 10 years)"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 8,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ]
+    },
+    {
+      "name": "quality",
+      "displayName": "Data quality",
+      "layout": [
+        {
+          "widget": {
+            "name": "w022",
+            "textbox_spec": "# Data quality\nResults of the latest Silver pipeline run. FAIL blocks the Gold rebuild; WARN is reported only."
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w023",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq",
+                  "disaggregated": true,
+                  "fields": [
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "check_name",
+                      "expression": "`check_name`"
+                    },
+                    {
+                      "name": "severity",
+                      "expression": "`severity`"
+                    },
+                    {
+                      "name": "failed_rows",
+                      "expression": "`failed_rows`"
+                    },
+                    {
+                      "name": "total_rows",
+                      "expression": "`total_rows`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "status",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "status",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "table_name",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "table name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "check_name",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "check name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "severity",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "severity",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "failed_rows",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "title": "failed rows",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0"
+                  },
+                  {
+                    "fieldName": "total_rows",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100005,
+                    "title": "total rows",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "frame": {
+                "showTitle": true,
+                "title": "Data quality checks (latest run)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ]
+    }
+  ]
+}

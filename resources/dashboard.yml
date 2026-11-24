@@ -1,0 +1,6 @@
+resources:
+  dashboards:
+    population_health:
+      display_name: Population Health and Cost
+      file_path: ../dashboard/population_health_and_cost.lvdash.json
+      warehouse_id: ${var.warehouse_id}
