@@ -1,0 +1,242 @@
+# Evaluation set for the SQL agent: 30 questions with hand-written reference SQL.
+# The agent's answer counts as correct when its *result* matches the reference
+# result (see agent/evaluation.py). {catalog} is replaced at run time.
+
+- id: q01
+  category: population
+  question: How many living patients are there?
+  sql: |
+    SELECT COUNT(*) AS living_patients
+    FROM {catalog}.gold.dim_patient WHERE NOT is_deceased
+
+- id: q02
+  category: population
+  question: How many patients died during the simulation?
+  sql: |
+    SELECT COUNT(*) AS deceased_patients
+    FROM {catalog}.gold.dim_patient WHERE is_deceased
+
+- id: q03
+  category: population
+  question: How many living patients are there of each gender?
+  sql: |
+    SELECT gender, COUNT(*) AS patients
+    FROM {catalog}.gold.dim_patient WHERE NOT is_deceased GROUP BY gender
+
+- id: q04
+  category: population
+  question: What is the average age of living patients?
+  sql: |
+    SELECT ROUND(AVG(age), 2) AS avg_age
+    FROM {catalog}.gold.dim_patient WHERE NOT is_deceased
+
+- id: q05
+  category: population
+  question: How many living women are aged 80 or older?
+  sql: |
+    SELECT COUNT(*) AS patients
+    FROM {catalog}.gold.dim_patient
+    WHERE NOT is_deceased AND gender = 'Female' AND age >= 80
+
+- id: q06
+  category: population
+  question: Which county has the most living patients?
+  sql: |
+    SELECT county FROM {catalog}.gold.dim_patient WHERE NOT is_deceased
+    GROUP BY county ORDER BY COUNT(*) DESC LIMIT 1
+
+- id: q07
+  category: population
+  question: What is the average household income of living patients by race?
+  sql: |
+    SELECT race, ROUND(AVG(income), 2) AS avg_income
+    FROM {catalog}.gold.dim_patient WHERE NOT is_deceased GROUP BY race
+
+- id: q08
+  category: utilization
+  question: How many emergency encounters are there in total?
+  sql: |
+    SELECT COUNT(*) AS emergency_encounters
+    FROM {catalog}.gold.fact_encounter WHERE encounter_class = 'emergency'
+
+- id: q09
+  category: utilization
+  question: How many encounters of each encounter class happened in 2025?
+  sql: |
+    SELECT encounter_class, COUNT(*) AS encounters
+    FROM {catalog}.gold.fact_encounter WHERE YEAR(encounter_date) = 2025
+    GROUP BY encounter_class
+
+- id: q10
+  category: utilization
+  question: How many unique patients had at least one encounter in 2025?
+  sql: |
+    SELECT COUNT(DISTINCT patient_id) AS patients
+    FROM {catalog}.gold.fact_encounter WHERE YEAR(encounter_date) = 2025
+
+- id: q11
+  category: utilization
+  question: How many encounters were there in each of the last 5 full years?
+  sql: |
+    SELECT YEAR(encounter_date) AS year, COUNT(*) AS encounters
+    FROM {catalog}.gold.fact_encounter
+    WHERE YEAR(encounter_date) BETWEEN (SELECT YEAR(snapshot_date) FROM {catalog}.gold.kpi_overview) - 5
+                                   AND (SELECT YEAR(snapshot_date) FROM {catalog}.gold.kpi_overview) - 1
+    GROUP BY YEAR(encounter_date)
+
+- id: q12
+  category: utilization
+  question: On average, how many encounters has each living patient had?
+  sql: |
+    SELECT ROUND(COUNT(e.encounter_id) / COUNT(DISTINCT p.patient_id), 2) AS encounters_per_patient
+    FROM {catalog}.gold.dim_patient p
+    LEFT JOIN {catalog}.gold.fact_encounter e ON e.patient_id = p.patient_id
+    WHERE NOT p.is_deceased
+
+- id: q13
+  category: utilization
+  question: Which 5 organizations had the most inpatient admissions?
+  sql: |
+    SELECT o.organization_name
+    FROM {catalog}.gold.fact_encounter f
+    JOIN {catalog}.gold.dim_organization o ON f.organization_id = o.organization_id
+    WHERE f.is_inpatient
+    GROUP BY o.organization_name ORDER BY COUNT(*) DESC LIMIT 5
+
+- id: q14
+  category: utilization
+  question: How many providers are there in each specialty?
+  sql: |
+    SELECT specialty, COUNT(*) AS providers
+    FROM {catalog}.gold.dim_provider GROUP BY specialty
+
+- id: q15
+  category: utilization
+  question: How many healthcare organizations are in the data?
+  sql: |
+    SELECT COUNT(*) AS organizations FROM {catalog}.gold.dim_organization
+
+- id: q16
+  category: quality
+  question: What is the overall 30-day readmission rate?
+  sql: |
+    SELECT ROUND(AVG(CASE WHEN has_readmission_30d THEN 1.0 ELSE 0 END), 4) AS readmission_rate
+    FROM {catalog}.gold.fact_encounter WHERE is_readmission_eligible
+
+- id: q17
+  category: quality
+  question: What is the 30-day readmission rate for each payer type?
+  sql: |
+    SELECT py.payer_type,
+           ROUND(AVG(CASE WHEN f.has_readmission_30d THEN 1.0 ELSE 0 END), 4) AS readmission_rate
+    FROM {catalog}.gold.fact_encounter f
+    JOIN {catalog}.gold.dim_payer py ON f.payer_id = py.payer_id
+    WHERE f.is_readmission_eligible GROUP BY py.payer_type
+
+- id: q18
+  category: quality
+  question: What is the average inpatient length of stay in days?
+  sql: |
+    SELECT ROUND(AVG(length_of_stay_days), 2) AS avg_los_days
+    FROM {catalog}.gold.fact_encounter WHERE is_inpatient
+
+- id: q19
+  category: quality
+  question: How many inpatient admissions in 2025 were readmissions within 30 days of a previous discharge?
+  sql: |
+    SELECT COUNT(*) AS readmissions
+    FROM {catalog}.gold.fact_encounter
+    WHERE is_inpatient AND is_readmission_30d AND YEAR(encounter_date) = 2025
+
+- id: q20
+  category: quality
+  question: How many patients had more than two inpatient admissions in 2025?
+  sql: |
+    SELECT COUNT(*) AS patients FROM (
+      SELECT patient_id FROM {catalog}.gold.fact_encounter
+      WHERE is_inpatient AND YEAR(encounter_date) = 2025
+      GROUP BY patient_id HAVING COUNT(*) > 2)
+
+- id: q21
+  category: chronic_disease
+  question: How many living patients have ever been diagnosed with diabetes?
+  sql: |
+    SELECT COUNT(DISTINCT c.patient_id) AS patients
+    FROM {catalog}.gold.fact_condition c
+    JOIN {catalog}.gold.dim_patient p ON c.patient_id = p.patient_id
+    WHERE c.condition_group = 'Diabetes' AND NOT p.is_deceased
+
+- id: q22
+  category: chronic_disease
+  question: What share of living patients have ever had hypertension?
+  sql: |
+    SELECT ROUND(
+      (SELECT COUNT(DISTINCT c.patient_id) FROM {catalog}.gold.fact_condition c
+       JOIN {catalog}.gold.dim_patient p ON c.patient_id = p.patient_id
+       WHERE c.condition_group = 'Hypertension' AND NOT p.is_deceased)
+      / (SELECT COUNT(*) FROM {catalog}.gold.dim_patient WHERE NOT is_deceased), 4) AS hypertension_prevalence
+
+- id: q23
+  category: chronic_disease
+  question: Which chronic condition group is most common among living patients aged 65-79?
+  sql: |
+    SELECT c.condition_group
+    FROM {catalog}.gold.fact_condition c
+    JOIN {catalog}.gold.dim_patient p ON c.patient_id = p.patient_id
+    WHERE NOT p.is_deceased AND p.age_band = '65-79' AND c.condition_group IS NOT NULL
+    GROUP BY c.condition_group ORDER BY COUNT(DISTINCT c.patient_id) DESC LIMIT 1
+
+- id: q24
+  category: chronic_disease
+  question: How many living patients have ever been diagnosed with each chronic condition group?
+  sql: |
+    SELECT c.condition_group, COUNT(DISTINCT c.patient_id) AS patients
+    FROM {catalog}.gold.fact_condition c
+    JOIN {catalog}.gold.dim_patient p ON c.patient_id = p.patient_id
+    WHERE NOT p.is_deceased AND c.condition_group IS NOT NULL
+    GROUP BY c.condition_group
+
+- id: q25
+  category: cost
+  question: What is the total cost of all encounters?
+  sql: |
+    SELECT ROUND(SUM(total_claim_cost), 2) AS total_cost FROM {catalog}.gold.fact_encounter
+
+- id: q26
+  category: cost
+  question: What share of total encounter cost was paid by insurers?
+  sql: |
+    SELECT ROUND(SUM(payer_coverage) / SUM(total_claim_cost), 4) AS insurer_share
+    FROM {catalog}.gold.fact_encounter
+
+- id: q27
+  category: cost
+  question: What was the average cost of an emergency encounter in 2025?
+  sql: |
+    SELECT ROUND(AVG(total_claim_cost), 2) AS avg_cost
+    FROM {catalog}.gold.fact_encounter
+    WHERE encounter_class = 'emergency' AND YEAR(encounter_date) = 2025
+
+- id: q28
+  category: cost
+  question: How much did patients pay out of pocket for encounters in 2025, by payer type?
+  sql: |
+    SELECT py.payer_type, ROUND(SUM(f.patient_out_of_pocket), 2) AS out_of_pocket
+    FROM {catalog}.gold.fact_encounter f
+    JOIN {catalog}.gold.dim_payer py ON f.payer_id = py.payer_id
+    WHERE YEAR(f.encounter_date) = 2025 GROUP BY py.payer_type
+
+- id: q29
+  category: cost
+  question: Which encounter class has the highest average cost per encounter?
+  sql: |
+    SELECT encounter_class FROM {catalog}.gold.fact_encounter
+    GROUP BY encounter_class ORDER BY AVG(total_claim_cost) DESC LIMIT 1
+
+- id: q30
+  category: cost
+  question: What were the top 10 medications by total cost for orders started in 2025?
+  sql: |
+    SELECT medication_description
+    FROM {catalog}.gold.fact_medication WHERE YEAR(start_date) = 2025
+    GROUP BY medication_description ORDER BY SUM(total_cost) DESC LIMIT 10

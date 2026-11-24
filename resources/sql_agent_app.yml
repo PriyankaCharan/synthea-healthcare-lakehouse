@@ -1,0 +1,107 @@
+resources:
+  apps:
+    sql_agent:
+      name: health-sql-agent
+      description: Chat with the Synthea Gold layer. A Databricks-hosted model writes read-only SQL, the app runs it and explains the result.
+      # The app needs the shared agent/ package, so it is deployed from the bundle root.
+      source_code_path: ..
+      config:
+        command: ["streamlit", "run", "app/app.py", "--server.headless", "true"]
+        env:
+          - name: SERVING_ENDPOINT
+            value_from: serving-endpoint
+          - name: DATABRICKS_WAREHOUSE_ID
+            value_from: sql-warehouse
+          - name: AGENT_CATALOG
+            value: ${var.catalog}
+      # Least privilege: the app's service principal can query the model, use the
+      # warehouse and SELECT from the Gold tables only (no Bronze/Silver, no writes).
+      resources:
+        - name: serving-endpoint
+          serving_endpoint:
+            name: ${var.agent_endpoint}
+            permission: CAN_QUERY
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: gold-dim-date
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.dim_date
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-dim-patient
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.dim_patient
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-dim-provider
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.dim_provider
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-dim-organization
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.dim_organization
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-dim-payer
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.dim_payer
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-fact-encounter
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.fact_encounter
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-fact-condition
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.fact_condition
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-fact-medication
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.fact_medication
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-kpi-overview
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.kpi_overview
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-agg-monthly-utilization
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.agg_monthly_utilization
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-agg-readmission-monthly
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.agg_readmission_monthly
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-agg-payer-performance
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.agg_payer_performance
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-agg-chronic-prevalence
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.agg_chronic_prevalence
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-agg-organization-performance
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.agg_organization_performance
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-agg-top-medications
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.agg_top_medications
+            securable_type: TABLE
+            permission: SELECT
+        - name: gold-agg-patient-cost-yearly
+          uc_securable:
+            securable_full_name: ${var.catalog}.gold.agg_patient_cost_yearly
+            securable_type: TABLE
+            permission: SELECT

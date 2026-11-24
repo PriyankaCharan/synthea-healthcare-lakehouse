@@ -1,0 +1,7 @@
+# Python packages for the SQL agent app (Databricks Apps installs these on deploy)
+databricks-sdk>=0.40.0
+openai>=1.40
+sqlglot>=25
+pyyaml
+pandas
+streamlit

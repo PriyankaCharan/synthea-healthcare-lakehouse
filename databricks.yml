@@ -1,5 +1,5 @@
 # Databricks Asset Bundle for the Synthea healthcare lakehouse.
-# One command deploys the notebooks, the medallion job and the AI/BI dashboard:
+# One command deploys the notebooks, the medallion job, the AI/BI dashboard and the SQL agent app:
 #   databricks bundle validate
 #   databricks bundle deploy -t dev
 #   databricks bundle run medallion_pipeline -t dev
@@ -18,8 +18,11 @@ variables:
   source_path:
     description: S3 folder with the raw Synthea CSV files
     default: s3://priyanka-synthea-healthcare/synthea/raw/seed42_p50000/
+  agent_endpoint:
+    description: Model Serving endpoint the SQL agent app uses
+    default: databricks-qwen35-122b-a10b
   warehouse_id:
-    description: SQL warehouse used by the dashboard
+    description: SQL warehouse used by the dashboard and the SQL agent app
     lookup:
       warehouse: Serverless Starter Warehouse
 
