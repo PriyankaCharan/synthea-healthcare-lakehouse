@@ -23,8 +23,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Python notebooks compile
-        run: python -m py_compile notebooks/*.py tests/run_local.py dashboard/build_dashboard.py
+      - name: Python files compile
+        run: python -m py_compile notebooks/*.py agent/*.py app/app.py tests/*.py dashboard/build_dashboard.py
+      - name: Unit tests (guardrails, scorer, agent loop)
+        run: |
+          pip install -q pytest pandas pyyaml "sqlglot>=25"
+          pytest -q tests/test_agent.py
       - name: Dashboard JSON is up to date with its generator
         run: |
           python dashboard/build_dashboard.py
