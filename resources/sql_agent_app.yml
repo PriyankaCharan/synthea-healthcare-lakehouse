@@ -25,82 +25,82 @@ resources:
           sql_warehouse:
             id: ${var.warehouse_id}
             permission: CAN_USE
-        - name: gold-dim-date
+        - name: dim-date
           uc_securable:
             securable_full_name: ${var.catalog}.gold.dim_date
             securable_type: TABLE
             permission: SELECT
-        - name: gold-dim-patient
+        - name: dim-patient
           uc_securable:
             securable_full_name: ${var.catalog}.gold.dim_patient
             securable_type: TABLE
             permission: SELECT
-        - name: gold-dim-provider
+        - name: dim-provider
           uc_securable:
             securable_full_name: ${var.catalog}.gold.dim_provider
             securable_type: TABLE
             permission: SELECT
-        - name: gold-dim-organization
+        - name: dim-organization
           uc_securable:
             securable_full_name: ${var.catalog}.gold.dim_organization
             securable_type: TABLE
             permission: SELECT
-        - name: gold-dim-payer
+        - name: dim-payer
           uc_securable:
             securable_full_name: ${var.catalog}.gold.dim_payer
             securable_type: TABLE
             permission: SELECT
-        - name: gold-fact-encounter
+        - name: fact-encounter
           uc_securable:
             securable_full_name: ${var.catalog}.gold.fact_encounter
             securable_type: TABLE
             permission: SELECT
-        - name: gold-fact-condition
+        - name: fact-condition
           uc_securable:
             securable_full_name: ${var.catalog}.gold.fact_condition
             securable_type: TABLE
             permission: SELECT
-        - name: gold-fact-medication
+        - name: fact-medication
           uc_securable:
             securable_full_name: ${var.catalog}.gold.fact_medication
             securable_type: TABLE
             permission: SELECT
-        - name: gold-kpi-overview
+        - name: kpi-overview
           uc_securable:
             securable_full_name: ${var.catalog}.gold.kpi_overview
             securable_type: TABLE
             permission: SELECT
-        - name: gold-agg-monthly-utilization
+        - name: agg-monthly-utilization
           uc_securable:
             securable_full_name: ${var.catalog}.gold.agg_monthly_utilization
             securable_type: TABLE
             permission: SELECT
-        - name: gold-agg-readmission-monthly
+        - name: agg-readmission-monthly
           uc_securable:
             securable_full_name: ${var.catalog}.gold.agg_readmission_monthly
             securable_type: TABLE
             permission: SELECT
-        - name: gold-agg-payer-performance
+        - name: agg-payer-performance
           uc_securable:
             securable_full_name: ${var.catalog}.gold.agg_payer_performance
             securable_type: TABLE
             permission: SELECT
-        - name: gold-agg-chronic-prevalence
+        - name: agg-chronic-prevalence
           uc_securable:
             securable_full_name: ${var.catalog}.gold.agg_chronic_prevalence
             securable_type: TABLE
             permission: SELECT
-        - name: gold-agg-organization-performance
+        - name: agg-organization-performance
           uc_securable:
             securable_full_name: ${var.catalog}.gold.agg_organization_performance
             securable_type: TABLE
             permission: SELECT
-        - name: gold-agg-top-medications
+        - name: agg-top-medications
           uc_securable:
             securable_full_name: ${var.catalog}.gold.agg_top_medications
             securable_type: TABLE
             permission: SELECT
-        - name: gold-agg-patient-cost-yearly
+        - name: agg-patient-cost-yearly
           uc_securable:
             securable_full_name: ${var.catalog}.gold.agg_patient_cost_yearly
             securable_type: TABLE
