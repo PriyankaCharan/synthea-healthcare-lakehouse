@@ -6,6 +6,7 @@ the result. Configuration comes from environment variables set by the bundle:
   SERVING_ENDPOINT        chat model endpoint name
   DATABRICKS_WAREHOUSE_ID SQL warehouse id
 """
+import logging
 import os
 import sys
 
@@ -27,6 +28,7 @@ EXAMPLES = [
     "What are the top 10 medications by total cost?",
 ]
 
+logging.basicConfig(level=logging.INFO)
 st.set_page_config(page_title="Health Data SQL Agent", page_icon="🩺", layout="wide")
 
 
@@ -37,19 +39,27 @@ def get_agent() -> SQLAgent:
     return SQLAgent(databricks_llm(ENDPOINT), run_sql, schema, catalog=CATALOG)
 
 
+MEASURE_HINTS = ("rate", "share", "pct", "percent", "prevalence", "avg", "average", "cost", "paid",
+                 "amount", "total", "spend", "pocket")
+
+
 def auto_chart(df: pd.DataFrame):
+    """Chart one measure against the first label column (time on a line, categories as bars)."""
     if df is None or len(df) < 2 or df.shape[1] < 2:
         return
     numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
     labels = [c for c in df.columns if c not in numeric]
-    if not numeric:
+    time_cols = [c for c in df.columns if any(k in str(c).lower() for k in ("year", "month", "date"))]
+    x = (time_cols or labels or [df.columns[0]])[0]
+    measures = [c for c in numeric if c != x]
+    if not measures:
         return
-    x = labels[0] if labels else df.columns[0]
-    y = [c for c in numeric if c != x][:3]
-    if not y:
-        return
-    data = df.set_index(x)[y]
-    if any(k in str(x).lower() for k in ("year", "month", "date")):
+    hinted = [c for c in measures if any(h in str(c).lower() for h in MEASURE_HINTS)]
+    y = hinted[0] if hinted else measures[-1]
+    data = df[[x, y]].sort_values(x) if x in time_cols else df[[x, y]]
+    data = data.set_index(x)
+    st.caption(f"{y.replace('_', ' ')} by {str(x).replace('_', ' ')}")
+    if x in time_cols:
         st.line_chart(data)
     elif len(df) <= 30:
         st.bar_chart(data)
@@ -57,7 +67,7 @@ def auto_chart(df: pd.DataFrame):
 
 def show_result(res):
     if res.ok:
-        st.markdown(res.answer or "")
+        st.markdown((res.answer or "").replace("$", "\\$"))  # "$" would otherwise start LaTeX
         auto_chart(res.data)
         with st.expander(f"SQL and data ({len(res.data)} rows, {res.seconds}s, attempt {res.attempts})"):
             st.code(res.sql, language="sql")
